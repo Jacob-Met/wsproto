@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from wsproto.connection import CLIENT, SERVER, Connection, ConnectionState
+from wsproto.connection import CLIENT, SERVER, Connection, ConnectionState, ConnectionType
 from wsproto.events import (
     BytesMessage,
     CloseConnection,
@@ -169,3 +169,13 @@ def test_receive_data_when_closed() -> None:
     client._state = ConnectionState.CLOSED
     with pytest.raises(LocalProtocolError):
         client.receive_data(b"something")
+
+
+@pytest.mark.parametrize("role", [CLIENT, SERVER])
+def test_invalid_close_code_does_not_change_connection_state(role: ConnectionType) -> None:
+    conn = Connection(role)
+    with pytest.raises(LocalProtocolError):
+        conn.send(CloseConnection(code=CloseReason.ABNORMAL_CLOSURE))
+    assert conn.state is ConnectionState.OPEN
+    assert conn.send(CloseConnection(code=CloseReason.NORMAL_CLOSURE))
+    assert conn.state is ConnectionState.LOCAL_CLOSING

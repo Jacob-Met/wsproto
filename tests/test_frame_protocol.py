@@ -10,6 +10,7 @@ import pytest
 
 from wsproto import extensions as wpext
 from wsproto import frame_protocol as fp
+from wsproto.utilities import LocalProtocolError
 
 
 class TestBuffer:
@@ -1047,10 +1048,34 @@ class TestFrameProtocolSend:
         data = proto.close(code=fp.CloseReason.NO_STATUS_RCVD)
         assert data == b"\x88\x00"
 
-    def test_local_only_close_reason(self) -> None:
+    @pytest.mark.parametrize(
+        "code",
+        [
+            fp.CloseReason.ABNORMAL_CLOSURE,
+            1006,
+            fp.CloseReason.TLS_HANDSHAKE_FAILED,
+            1004,
+            999,
+            1016,
+            2999,
+            5000,
+        ],
+    )
+    @pytest.mark.parametrize("client", [True, False])
+    def test_invalid_outbound_close_code(self, code: int, client: bool) -> None:
+        proto = fp.FrameProtocol(client=client, extensions=[])
+        with pytest.raises(LocalProtocolError, match=r"invalid.*close code|local-only"):
+            proto.close(code=code)
+
+    def test_integer_no_status_code_sends_empty_close(self) -> None:
         proto = fp.FrameProtocol(client=False, extensions=[])
-        data = proto.close(code=fp.CloseReason.ABNORMAL_CLOSURE)
-        assert data == b"\x88\x02\x03\xe8"
+        assert proto.close(code=1005) == b"\x88\x00"
+
+    @pytest.mark.parametrize("code", [fp.CloseReason.NO_STATUS_RCVD, 1005])
+    def test_no_status_code_rejects_reason(self, code: int) -> None:
+        proto = fp.FrameProtocol(client=False, extensions=[])
+        with pytest.raises(TypeError, match="reason without a code"):
+            proto.close(code=code, reason="internal error")
 
     def test_ping_without_payload(self) -> None:
         proto = fp.FrameProtocol(client=False, extensions=[])
